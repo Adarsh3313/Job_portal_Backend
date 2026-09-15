@@ -1,0 +1,936 @@
+{
+  "info": {
+    "name": "AuthenticationService (port 8083)",
+    "description": "End-to-end tests for the JobApplication AuthenticationService.\n\nRun the whole collection in order with the Collection Runner - later requests reuse ids, tokens and emails captured by earlier ones.\n\nEach run generates a fresh runId so emails are unique and the suite is re-runnable without cleaning the DB.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8083" },
+    { "key": "password", "value": "Admin@123" },
+    { "key": "runId", "value": "" },
+    { "key": "userEmail", "value": "" },
+    { "key": "hiringEmail", "value": "" },
+    { "key": "adminEmail", "value": "" },
+    { "key": "userToken", "value": "" },
+    { "key": "adminToken", "value": "" },
+    { "key": "hiringToken", "value": "" },
+    { "key": "userId", "value": "" },
+    { "key": "hiringId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "00 - Smoke",
+      "item": [
+        {
+          "name": "GET /test - service is up (seeds run data)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Fresh identities per run so the suite is repeatable",
+                  "const runId = String(Date.now()).slice(-7);",
+                  "pm.collectionVariables.set('runId', runId);",
+                  "pm.collectionVariables.set('userEmail', 'qa.user.' + runId + '@example.com');",
+                  "pm.collectionVariables.set('hiringEmail', 'qa.hiring.' + runId + '@example.com');",
+                  "pm.collectionVariables.set('adminEmail', 'qa.admin.' + runId + '@example.com');",
+                  "console.log('Run ID: ' + runId);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('returns the smoke-test banner', () => {",
+                  "  pm.expect(pm.response.text()).to.eql('JWT Authentication Working!');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/test", "host": ["{{baseUrl}}"], "path": ["test"] }
+          }
+        },
+        {
+          "name": "GET /actuator/health - UP",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('status is UP', () => {",
+                  "  pm.expect(pm.response.json().status).to.eql('UP');",
+                  "});",
+                  "pm.test('datasource is reachable', () => {",
+                  "  const db = pm.response.json().components && pm.response.json().components.db;",
+                  "  pm.expect(db, 'db health component missing').to.not.be.undefined;",
+                  "  pm.expect(db.status).to.eql('UP');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/actuator/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["actuator", "health"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "01 - Register",
+      "item": [
+        {
+          "name": "Register USER - 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('confirms registration', () => {",
+                  "  pm.expect(pm.response.text()).to.include('User Registered Successfully');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"QA User {{runId}}\",\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"{{password}}\",\n  \"phone\": \"9000000001\",\n  \"role\": \"USER\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "register"]
+            }
+          }
+        },
+        {
+          "name": "Register USER again - 400 duplicate email",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 Bad Request', () => pm.response.to.have.status(400));",
+                  "pm.test('rejects the duplicate email', () => {",
+                  "  pm.expect(pm.response.json().error).to.eql('Email Already Registered');",
+                  "});",
+                  "pm.test('error envelope has timestamp + status', () => {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b).to.have.property('timestamp');",
+                  "  pm.expect(b.status).to.eql(400);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"QA User {{runId}}\",\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"{{password}}\",\n  \"phone\": \"9000000001\",\n  \"role\": \"USER\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "register"]
+            }
+          }
+        },
+        {
+          "name": "Register HIRING_DEPARTMENT - 200 pending approval",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('is held for admin approval', () => {",
+                  "  pm.expect(pm.response.text()).to.include('Waiting for Admin Approval');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"QA Recruiter {{runId}}\",\n  \"email\": \"{{hiringEmail}}\",\n  \"password\": \"{{password}}\",\n  \"phone\": \"9000000002\",\n  \"role\": \"HIRING_DEPARTMENT\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "register"]
+            }
+          }
+        },
+        {
+          "name": "Register ADMIN - 200 auto-approved",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('admin is created without approval step', () => {",
+                  "  pm.expect(pm.response.text()).to.include('User Registered Successfully');",
+                  "});",
+                  "console.warn('SECURITY: /api/auth/register is public and honours a client-supplied role, so anyone can mint an ADMIN. See README.');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"QA Admin {{runId}}\",\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{password}}\",\n  \"phone\": \"9000000003\",\n  \"role\": \"ADMIN\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "register"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 - Login",
+      "item": [
+        {
+          "name": "Login USER - 200 + token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "",
+                  "const body = pm.response.json();",
+                  "",
+                  "pm.test('returns token and role', () => {",
+                  "  pm.expect(body.token, 'token missing').to.be.a('string').and.not.empty;",
+                  "  pm.expect(body.role).to.eql('USER');",
+                  "});",
+                  "",
+                  "pm.test('token is a well-formed JWT with the expected claims', () => {",
+                  "  const parts = String(body.token).split('.');",
+                  "  pm.expect(parts.length, 'not a three-part JWT').to.eql(3);",
+                  "",
+                  "  const CryptoJS = require('crypto-js');",
+                  "  let b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');",
+                  "  while (b64.length % 4) { b64 += '='; }",
+                  "  const claims = JSON.parse(CryptoJS.enc.Utf8.stringify(CryptoJS.enc.Base64.parse(b64)));",
+                  "",
+                  "  pm.expect(claims.sub, 'subject should be the email').to.eql(pm.collectionVariables.get('userEmail'));",
+                  "  pm.expect(claims.role).to.eql('USER');",
+                  "  pm.expect(claims.exp - claims.iat, 'token should last 24h').to.eql(86400);",
+                  "});",
+                  "",
+                  "pm.test('password hash is never returned', () => {",
+                  "  pm.expect(Object.keys(body)).to.not.include('password');",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('userToken', body.token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "Login USER wrong password - 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 Bad Request', () => pm.response.to.have.status(400));",
+                  "pm.test('rejects bad credentials', () => {",
+                  "  pm.expect(pm.response.json().error).to.eql('Invalid Credentials');",
+                  "});",
+                  "pm.test('no token is issued', () => {",
+                  "  pm.expect(pm.response.text()).to.not.include('token');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"definitely-not-the-password\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "Login unknown email - 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 Bad Request', () => pm.response.to.have.status(400));",
+                  "pm.test('reports user not found', () => {",
+                  "  pm.expect(pm.response.json().error).to.eql('User Not Found');",
+                  "});",
+                  "console.warn('NOTE: distinct messages for unknown-email vs wrong-password let an attacker enumerate registered accounts.');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"nobody.{{runId}}@example.com\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "Login HIRING before approval - 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 Bad Request', () => pm.response.to.have.status(400));",
+                  "pm.test('blocks unapproved recruiter', () => {",
+                  "  pm.expect(pm.response.json().error).to.eql('Waiting For Admin Approval');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{hiringEmail}}\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "Login ADMIN - 200 + token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('role is ADMIN', () => pm.expect(body.role).to.eql('ADMIN'));",
+                  "pm.collectionVariables.set('adminToken', body.token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "login"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 - Admin: approval flow",
+      "item": [
+        {
+          "name": "GET /api/admin/stats",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('returns the four counters as numbers', () => {",
+                  "  const b = pm.response.json();",
+                  "  ['users', 'recruiters', 'admins', 'pendingRecruiters'].forEach(k => {",
+                  "    pm.expect(b, 'missing ' + k).to.have.property(k);",
+                  "    pm.expect(b[k], k + ' should be numeric').to.be.a('number');",
+                  "  });",
+                  "});",
+                  "pm.test('our seeded accounts are counted', () => {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.users).to.be.at.least(3);",
+                  "  pm.expect(b.pendingRecruiters).to.be.at.least(1);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/stats",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "stats"]
+            }
+          }
+        },
+        {
+          "name": "GET /api/admin/pending-recruiters (captures hiringId)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const list = pm.response.json();",
+                  "pm.test('returns an array', () => pm.expect(list).to.be.an('array'));",
+                  "",
+                  "const mine = list.find(u => u.email === pm.collectionVariables.get('hiringEmail'));",
+                  "pm.test('our pending recruiter is listed', () => pm.expect(mine, 'seeded recruiter not in list').to.not.be.undefined);",
+                  "",
+                  "pm.test('every entry is an unapproved HIRING_DEPARTMENT', () => {",
+                  "  list.forEach(u => {",
+                  "    pm.expect(u.role).to.eql('HIRING_DEPARTMENT');",
+                  "    pm.expect(Boolean(u.approved), 'approved recruiter leaked into pending list').to.be.false;",
+                  "  });",
+                  "});",
+                  "",
+                  "if (mine) { pm.collectionVariables.set('hiringId', mine.userId); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/pending-recruiters",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "pending-recruiters"]
+            }
+          }
+        },
+        {
+          "name": "PUT /api/admin/approve/{{hiringId}} - 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('confirms approval', () => {",
+                  "  pm.expect(pm.response.text()).to.include('Recruiter Approved Successfully');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/approve/{{hiringId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "approve", "{{hiringId}}"]
+            }
+          }
+        },
+        {
+          "name": "Login HIRING after approval - 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('role is HIRING_DEPARTMENT', () => pm.expect(body.role).to.eql('HIRING_DEPARTMENT'));",
+                  "pm.collectionVariables.set('hiringToken', body.token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{hiringEmail}}\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "PUT /api/admin/approve/999999999 - 400 not found",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 Bad Request', () => pm.response.to.have.status(400));",
+                  "pm.test('reports user not found', () => {",
+                  "  pm.expect(pm.response.json().error).to.eql('User Not Found');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/approve/999999999",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "approve", "999999999"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 - Admin: block / activate / delete",
+      "item": [
+        {
+          "name": "GET /api/admin/users (captures userId)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const list = pm.response.json();",
+                  "pm.test('returns an array', () => pm.expect(list).to.be.an('array'));",
+                  "",
+                  "const mine = list.find(u => u.email === pm.collectionVariables.get('userEmail'));",
+                  "pm.test('our seeded user is listed', () => pm.expect(mine, 'seeded user not in list').to.not.be.undefined);",
+                  "",
+                  "pm.test('seeded user has the expected shape', () => {",
+                  "  pm.expect(mine.role).to.eql('USER');",
+                  "  pm.expect(mine.status).to.eql('ACTIVE');",
+                  "  pm.expect(Boolean(mine.approved)).to.be.true;",
+                  "});",
+                  "",
+                  "if (mine) { pm.collectionVariables.set('userId', mine.userId); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/users",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "users"]
+            }
+          }
+        },
+        {
+          "name": "PUT /api/admin/block/{{userId}} - 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('confirms block', () => {",
+                  "  pm.expect(pm.response.text()).to.include('User Blocked Successfully');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/block/{{userId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "block", "{{userId}}"]
+            }
+          }
+        },
+        {
+          "name": "Login blocked USER - 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 Bad Request', () => pm.response.to.have.status(400));",
+                  "pm.test('blocked account cannot log in', () => {",
+                  "  pm.expect(pm.response.json().error).to.eql('Your account is blocked. Contact Admin.');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "PUT /api/admin/activate/{{userId}} - 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('confirms activation', () => {",
+                  "  pm.expect(pm.response.text()).to.include('User Activated Successfully');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/activate/{{userId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "activate", "{{userId}}"]
+            }
+          }
+        },
+        {
+          "name": "Login reactivated USER - 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('login works again after activation', () => {",
+                  "  pm.expect(pm.response.json().token).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "DELETE /api/admin/users/{{userId}} - 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('confirms deletion', () => {",
+                  "  pm.expect(pm.response.text()).to.include('User Deleted Successfully');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/users/{{userId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "users", "{{userId}}"]
+            }
+          }
+        },
+        {
+          "name": "Login deleted USER - 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 Bad Request', () => pm.response.to.have.status(400));",
+                  "pm.test('deleted account is gone', () => {",
+                  "  pm.expect(pm.response.json().error).to.eql('User Not Found');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "login"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 - Role endpoints",
+      "item": [
+        {
+          "name": "GET /user with USER token - 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('greets the user', () => {",
+                  "  pm.expect(pm.response.text()).to.eql('Welcome User');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{userToken}}" }],
+            "url": { "raw": "{{baseUrl}}/user", "host": ["{{baseUrl}}"], "path": ["user"] }
+          }
+        },
+        {
+          "name": "GET /hiring with HIRING token - 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('greets the hiring department', () => {",
+                  "  pm.expect(pm.response.text()).to.eql('Welcome Hiring Department');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{hiringToken}}" }],
+            "url": { "raw": "{{baseUrl}}/hiring", "host": ["{{baseUrl}}"], "path": ["hiring"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 - Security gaps (asserts CURRENT behaviour, not desired)",
+      "description": "These pass today because the service is wide open. Each one is a finding - see README. After you harden SecurityConfig they will start failing, and that is the signal to flip the expectations.",
+      "item": [
+        {
+          "name": "GAP: /api/admin/users needs no token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('CURRENT: unauthenticated request is allowed (should be 401)', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "console.warn('FINDING: anyRequest().permitAll() leaves every /api/admin endpoint open to anonymous callers.');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/users",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "users"]
+            }
+          }
+        },
+        {
+          "name": "GAP: /api/admin/users leaks BCrypt password hashes",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const list = pm.response.json();",
+                  "const withHash = list.filter(u => typeof u.password === 'string' && u.password.startsWith('$2'));",
+                  "pm.test('CURRENT: response serialises password hashes (should be omitted)', () => {",
+                  "  pm.expect(withHash.length, 'no hashes found - looks like this was fixed, flip this test').to.be.above(0);",
+                  "});",
+                  "console.warn('FINDING: AdminController returns the User entity directly, so every row ships its BCrypt hash. Use a DTO or @JsonIgnore.');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/users",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "users"]
+            }
+          }
+        },
+        {
+          "name": "GAP: /user accepts an ADMIN token (@PreAuthorize inert)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('CURRENT: wrong-role token is accepted (should be 403)', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "console.warn('FINDING: @PreAuthorize does nothing without @EnableMethodSecurity, so role checks on /user and /hiring never run.');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/user", "host": ["{{baseUrl}}"], "path": ["user"] }
+          }
+        },
+        {
+          "name": "GAP: garbage bearer token is not rejected",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('CURRENT: invalid token still gets through (should be 401)', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "console.warn('FINDING: JwtAuthenticationFilter swallows parse failures and calls doFilter anyway, so a forged token is indistinguishable from none.');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer not.a.real.token" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/stats",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "stats"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

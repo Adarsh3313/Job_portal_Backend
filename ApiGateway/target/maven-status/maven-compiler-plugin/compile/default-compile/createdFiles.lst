@@ -1,0 +1,3 @@
+com\transpogov\apigateway\ApiGatewayApplication.class
+com\transpogov\apigateway\controller\FallbackController.class
+com\transpogov\apigateway\filter\LoggingGlobalFilter.class
